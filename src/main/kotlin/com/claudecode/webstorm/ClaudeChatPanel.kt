@@ -399,10 +399,11 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
     }
 
     /**
-     * Auto-scroll to bottom UNLESS the user has scrolled away during generation.
-     * Once generation finishes, scroll lock is released.
+     * Auto-scroll to bottom ONLY while generating AND user hasn't scrolled away.
+     * Once generation finishes, scrolling is completely free.
      */
     private fun smartScrollToBottom() {
+        if (!isGenerating) return     // generation done — never force scroll
         if (userScrolledAway) return  // user scrolled up — don't fight them
         SwingUtilities.invokeLater {
             val sb = scrollPane.verticalScrollBar
