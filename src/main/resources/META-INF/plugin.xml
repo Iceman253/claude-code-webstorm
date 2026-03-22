@@ -1,22 +1,67 @@
 <idea-plugin>
     <id>com.claudecode.webstorm</id>
     <name>Claude Code for WebStorm</name>
-    <vendor email="support@anthropic.com" url="https://claude.ai">Anthropic</vendor>
+    <vendor url="https://github.com/Iceman253/claude-code-webstorm">Iceman253</vendor>
 
     <description><![CDATA[
-        <b>Claude Code for WebStorm</b><br/><br/>
-        Integrates Claude Code AI assistant directly into WebStorm with a split terminal panel,
-        session management, and WebStorm-native editor actions.<br/><br/>
+        <h2>Claude Code for WebStorm</h2>
 
-        <b>Features:</b>
+        <p><b>This plugin was entirely written by AI</b> (Claude Opus 4.6) through conversational
+        prompting. Every line of code was AI-generated.</p>
+
+        <p>A <b>chat UI frontend</b> for the Claude Code CLI — not a terminal wrapper. Get a proper
+        chat interface with streaming responses, markdown rendering, and multi-session support,
+        all without leaving your IDE.</p>
+
+        <h3>Why This Exists</h3>
+        <p>The official JetBrains Claude plugin just opens a terminal. This plugin gives you a real
+        chat experience: your messages on the left, Claude's formatted responses on the right,
+        with a typing animation as responses stream in character-by-character.</p>
+
+        <h3>Features</h3>
         <ul>
-            <li>Split tool window: session context on the left, live terminal on the right</li>
-            <li>Send selected code to Claude from any editor</li>
-            <li>Ask Claude about the current file with one keystroke</li>
-            <li>Multiple named Claude sessions per project</li>
-            <li>Auto-inject current file path and selection context</li>
-            <li>Floating prompt overlay (Alt+Shift+C) for quick queries</li>
-            <li>WebStorm-aware: understands JS/TS/Node project context</li>
+            <li><b>Chat UI</b> — clean message bubbles with user messages left-aligned and Claude's
+            responses right-aligned, rendered with markdown formatting (bold, italic, code blocks)</li>
+            <li><b>Live streaming</b> — responses type out character-by-character with a block cursor,
+            then render as formatted markdown when complete</li>
+            <li><b>Slash command autocomplete</b> — type <code>/</code> to get a popup with all 24
+            Claude CLI commands (<code>/compact</code>, <code>/clear</code>, <code>/model</code>, etc.)</li>
+            <li><b>Model selector</b> — dropdown next to the input box to switch between Claude models
+            on the fly (Opus, Sonnet, Haiku) without opening settings</li>
+            <li><b>Multiple sessions</b> — create, rename, and delete separate conversations per task,
+            with a session sidebar showing all active sessions</li>
+            <li><b>Multi-turn conversations</b> — sessions automatically resume using the Claude CLI's
+            <code>--resume</code> flag, maintaining full conversation context</li>
+            <li><b>Smart scrolling</b> — auto-scrolls during streaming but stays put if you scroll up
+            to read earlier messages</li>
+            <li><b>Send code to Claude</b> — highlight code in the editor and send it with context,
+            or reference entire files with automatic language detection</li>
+            <li><b>Floating prompt popup</b> (Alt+Shift+C) — lightweight input near your caret for
+            quick questions without switching to the tool window</li>
+            <li><b>Context menus</b> — right-click in the editor or project view to send code or ask
+            about files</li>
+            <li><b>Startup check</b> — warns if the <code>claude</code> CLI is not found on PATH</li>
+        </ul>
+
+        <h3>How It Works</h3>
+        <p>The plugin runs <code>claude -p "prompt" --output-format stream-json --verbose</code> as a
+        subprocess and parses the NDJSON streaming output in real time. No API keys needed — it uses
+        whatever authentication your Claude CLI has configured.</p>
+
+        <h3>Requirements</h3>
+        <ul>
+            <li>Claude Code CLI installed: <code>npm install -g @anthropic-ai/claude-code</code></li>
+            <li>JetBrains IDE 2024.1+ (WebStorm, IntelliJ IDEA, PyCharm, etc.)</li>
+        </ul>
+
+        <h3>Keyboard Shortcuts</h3>
+        <ul>
+            <li><b>Ctrl+Esc</b> — Toggle Claude Code panel</li>
+            <li><b>Alt+Shift+C</b> — Floating prompt popup</li>
+            <li><b>Ctrl+Alt+Shift+S</b> — Send selection to Claude</li>
+            <li><b>Ctrl+Alt+Shift+F</b> — Ask Claude about current file</li>
+            <li><b>Ctrl+Alt+Shift+N</b> — New session</li>
+            <li><b>Delete</b> — Delete selected session (when session list is focused)</li>
         </ul>
     ]]></description>
 

@@ -410,6 +410,7 @@ class MessageBubble(
     private var displayedLength = 0
     private var revealTimer: Timer? = null
     private var isCurrentlyStreaming = false
+    private var lastRevalidateTime = 0L
 
     companion object {
         private val USER_BG = JBColor(Color(0xE3F2FD), Color(0x2B3D50))
@@ -417,9 +418,10 @@ class MessageBubble(
         private val SYSTEM_BG = JBColor(Color(0xF5F5F5), Color(0x2D2D2D))
         private const val MAX_WIDTH_FRACTION = 0.78
         private const val ARC = 16
-        private const val TYPING_MS = 8          // interval between ticks
+        private const val TYPING_MS = 10         // interval between ticks
         private const val CHARS_PER_TICK = 2     // characters per tick
         private const val CURSOR = "\u2588"      // block cursor █
+        private const val REVALIDATE_INTERVAL = 150L // ms between layout passes
     }
 
     init {
@@ -539,14 +541,24 @@ class MessageBubble(
         // Use plain text during streaming for smooth character-by-character updates
         contentPane.contentType = "text/plain"
         contentPane.font = JBUI.Fonts.label(14f)
+        contentPane.text = CURSOR
+        displayedLength = 0
 
         revealTimer = Timer(TYPING_MS) {
             if (displayedLength < targetContent.length) {
-                displayedLength = (displayedLength + CHARS_PER_TICK).coerceAtMost(targetContent.length)
-                val visible = targetContent.substring(0, displayedLength)
-                contentPane.text = visible + CURSOR
-                contentPane.caretPosition = contentPane.document.length
-                revalidate()
+                val newEnd = (displayedLength + CHARS_PER_TICK).coerceAtMost(targetContent.length)
+                val chunk = targetContent.substring(displayedLength, newEnd)
+                val doc = contentPane.document
+                // Insert new characters just before the cursor (last char)
+                doc.insertString(doc.length - 1, chunk, null)
+                displayedLength = newEnd
+
+                // Throttle expensive layout passes
+                val now = System.currentTimeMillis()
+                if (now - lastRevalidateTime > REVALIDATE_INTERVAL) {
+                    lastRevalidateTime = now
+                    revalidate()
+                }
             } else if (!isCurrentlyStreaming) {
                 // All caught up and streaming is done — switch to final HTML
                 revealTimer?.stop()

@@ -1,0 +1,16 @@
+// Gradle init script: provides a local stub for the jb.gg Android Studio releases URL
+// which may be DNS-blocked in some network environments.
+// This URL is only used for plugin verification against Android Studio — not needed for building.
+
+def stubXml = new File(gradle.rootProject.projectDir, "android-studio-releases.xml")
+def stubUrl = stubXml.toURI().toString()
+
+// Set it as a JVM system property before any plugins are applied
+System.setProperty(
+    "org.jetbrains.intellij.platform.androidStudioReleasesUrl",
+    stubUrl
+)
+
+gradle.beforeProject { project ->
+    project.ext["org.jetbrains.intellij.platform.androidStudioReleasesUrl"] = stubUrl
+}

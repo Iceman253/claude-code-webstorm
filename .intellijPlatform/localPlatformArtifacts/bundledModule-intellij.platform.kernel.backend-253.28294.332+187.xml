@@ -1,0 +1,10 @@
+<ivy-module version="2.0">
+  <info organisation="bundledModule" module="intellij.platform.kernel.backend" revision="253.28294.332+187"/>
+  <configurations>
+    <conf name="default" visibility="public"/>
+  </configurations>
+  <publications>
+    <artifact name="/Users/cohen/.gradle/caches/8.9/transforms/f37dc34d7db100df56a67403cd633eba/transformed/WebStorm-2025.3-win/lib/modules/intellij.platform.kernel.backend.jar" type="jar" conf="default"/>
+  </publications>
+  <dependencies/>
+</ivy-module>
