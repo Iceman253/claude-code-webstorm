@@ -1,0 +1,142 @@
+<idea-plugin>
+    <id>com.claudecode.webstorm</id>
+    <name>Claude Code for WebStorm</name>
+    <vendor email="support@anthropic.com" url="https://claude.ai">Anthropic</vendor>
+
+    <description><![CDATA[
+        <b>Claude Code for WebStorm</b><br/><br/>
+        Integrates Claude Code AI assistant directly into WebStorm with a split terminal panel,
+        session management, and WebStorm-native editor actions.<br/><br/>
+
+        <b>Features:</b>
+        <ul>
+            <li>Split tool window: session context on the left, live terminal on the right</li>
+            <li>Send selected code to Claude from any editor</li>
+            <li>Ask Claude about the current file with one keystroke</li>
+            <li>Multiple named Claude sessions per project</li>
+            <li>Auto-inject current file path and selection context</li>
+            <li>Floating prompt overlay (Alt+Shift+C) for quick queries</li>
+            <li>WebStorm-aware: understands JS/TS/Node project context</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+
+        <!-- Tool Window -->
+        <toolWindow
+            id="Claude Code"
+            anchor="bottom"
+            secondary="false"
+            icon="/icons/claude_13.svg"
+            factoryClass="com.claudecode.webstorm.ClaudeToolWindowFactory"
+            order="last"
+        />
+
+        <!-- Settings -->
+        <applicationService
+            serviceImplementation="com.claudecode.webstorm.settings.ClaudeSettings"
+        />
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.claudecode.webstorm.settings.ClaudeSettingsConfigurable"
+            id="com.claudecode.webstorm.settings"
+            displayName="Claude Code"
+        />
+
+        <!-- Project startup -->
+        <postStartupActivity
+            implementation="com.claudecode.webstorm.ClaudeStartupActivity"
+        />
+
+        <!-- Notification group -->
+        <notificationGroup
+            id="Claude Code"
+            displayType="BALLOON"
+            isLogByDefault="true"
+        />
+
+    </extensions>
+
+    <actions>
+
+        <!-- Main action group in Tools menu -->
+        <group id="ClaudeCode.Menu" text="Claude Code" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action id="ClaudeCode.OpenPanel"
+                    class="com.claudecode.webstorm.actions.OpenClaudeAction"
+                    text="Open Claude Code Panel"
+                    description="Open the Claude Code tool window"
+                    icon="/icons/claude_13.svg">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl ESCAPE"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE"/>
+            </action>
+
+            <action id="ClaudeCode.NewSession"
+                    class="com.claudecode.webstorm.actions.NewClaudeSessionAction"
+                    text="New Claude Session"
+                    description="Start a new Claude Code session in the terminal"
+                    icon="/icons/claude_13.svg">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift N"/>
+            </action>
+
+            <separator/>
+
+            <action id="ClaudeCode.SendSelection"
+                    class="com.claudecode.webstorm.actions.SendToClaudeAction"
+                    text="Send Selection to Claude"
+                    description="Send the current editor selection to Claude Code">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift S"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift S"/>
+            </action>
+
+            <action id="ClaudeCode.AskAboutFile"
+                    class="com.claudecode.webstorm.actions.AskAboutFileAction"
+                    text="Ask Claude About This File"
+                    description="Send the current file path to Claude Code for context">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift F"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift F"/>
+            </action>
+
+            <action id="ClaudeCode.FloatingPrompt"
+                    class="com.claudecode.webstorm.actions.FloatingPromptAction"
+                    text="Quick Claude Prompt..."
+                    description="Open a floating input to send a prompt to Claude Code">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift C"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt shift C"/>
+            </action>
+
+        </group>
+
+        <!-- Editor context menu -->
+        <group id="ClaudeCode.EditorPopup">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <separator/>
+            <action id="ClaudeCode.EditorSendSelection"
+                    class="com.claudecode.webstorm.actions.SendToClaudeAction"
+                    text="Send to Claude Code"
+                    description="Send selected code to Claude Code"
+                    icon="/icons/claude_13.svg"/>
+            <action id="ClaudeCode.EditorAskAboutFile"
+                    class="com.claudecode.webstorm.actions.AskAboutFileAction"
+                    text="Ask Claude About This File"
+                    description="Ask Claude about the current file"
+                    icon="/icons/claude_13.svg"/>
+        </group>
+
+        <!-- Project view context menu -->
+        <group id="ClaudeCode.ProjectPopup">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <separator/>
+            <action id="ClaudeCode.ProjectSendFile"
+                    class="com.claudecode.webstorm.actions.AskAboutFileAction"
+                    text="Ask Claude About This File"
+                    description="Ask Claude about the selected file"
+                    icon="/icons/claude_13.svg"/>
+        </group>
+
+    </actions>
+
+</idea-plugin>
