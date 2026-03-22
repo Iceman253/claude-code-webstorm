@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugins>
+    <plugin
+        id="com.claudecode.webstorm"
+        url="https://github.com/Iceman253/claude-code-webstorm/releases/latest/download/claude-code-webstorm-1.0.0.zip"
+        version="1.0.0">
+        <name>Claude Code for WebStorm</name>
+        <description>AI-generated chat UI frontend for Claude Code CLI</description>
+    </plugin>
+</plugins>
