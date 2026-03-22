@@ -68,6 +68,8 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
     private val modelCombo = JComboBox<String>()
     private val timeFormat = SimpleDateFormat("HH:mm")
     private val bubbleMap = mutableMapOf<ChatMessage, MessageBubble>()
+    private var isGenerating = false
+    private var userScrolledAway = false
 
     companion object {
         private val KNOWN_MODELS = arrayOf(
@@ -93,6 +95,24 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         }
 
         addWelcomeMessage()
+
+        // Detect when user manually scrolls away from bottom
+        scrollPane.verticalScrollBar.addAdjustmentListener { e ->
+            if (!e.valueIsAdjusting) return@addAdjustmentListener
+            // User is dragging the scrollbar — check if they moved away from bottom
+            val sb = scrollPane.verticalScrollBar
+            val atBottom = sb.value + sb.visibleAmount >= sb.maximum - 60
+            if (!atBottom && isGenerating) {
+                userScrolledAway = true
+            }
+        }
+        // Also detect mouse wheel scrolling up
+        scrollPane.viewport.view.addMouseWheelListener { e ->
+            if (e.wheelRotation < 0 && isGenerating) {
+                // Scrolling up during generation
+                userScrolledAway = true
+            }
+        }
 
         add(scrollPane, BorderLayout.CENTER)
         add(buildBottomPanel(), BorderLayout.SOUTH)
@@ -366,19 +386,27 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         sendButton.isEnabled = !processing
         stopButton.isVisible = processing
         statusLabel.text = if (processing) "Claude is thinking..." else " "
+
+        if (processing) {
+            // Generation starting — lock scroll to bottom until user scrolls away
+            isGenerating = true
+            userScrolledAway = false
+        } else {
+            // Generation done — release scroll lock
+            isGenerating = false
+            userScrolledAway = false
+        }
     }
 
     /**
-     * Only auto-scroll if the user is already near the bottom.
-     * This lets users scroll up to read without being yanked back down.
+     * Auto-scroll to bottom UNLESS the user has scrolled away during generation.
+     * Once generation finishes, scroll lock is released.
      */
     private fun smartScrollToBottom() {
+        if (userScrolledAway) return  // user scrolled up — don't fight them
         SwingUtilities.invokeLater {
             val sb = scrollPane.verticalScrollBar
-            val atBottom = sb.value + sb.visibleAmount >= sb.maximum - 50
-            if (atBottom) {
-                sb.value = sb.maximum
-            }
+            sb.value = sb.maximum
         }
     }
 
