@@ -73,7 +73,8 @@ class ClaudeToolWindowPanel(
         val headerButtons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply {
             isOpaque = false
             add(InplaceButton("Delete session", AllIcons.General.Remove) {
-                sessionList.selectedValue?.let { deleteSession(it) }
+                val session = sessionList.selectedValue ?: manager.getActiveSession()
+                session?.let { deleteSession(it) }
             })
             add(InplaceButton("New session", AllIcons.General.Add) { newSession() })
         }
