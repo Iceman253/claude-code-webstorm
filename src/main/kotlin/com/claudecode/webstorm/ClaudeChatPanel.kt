@@ -68,9 +68,7 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
     private val modelCombo = JComboBox<String>()
     private val timeFormat = SimpleDateFormat("HH:mm")
     private val bubbleMap = mutableMapOf<ChatMessage, MessageBubble>()
-    private var isGenerating = false
-    private var userScrolledAway = false
-    private var isProgrammaticScroll = false
+    private var scrollToBottomOnNextUpdate = false
 
     companion object {
         private val KNOWN_MODELS = arrayOf(
@@ -96,24 +94,6 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         }
 
         addWelcomeMessage()
-
-        // Bug-fix: detect ALL forms of user scrolling (drag, track click, keyboard, wheel)
-        // but ignore programmatic scrolls from smartScrollToBottom/forceScrollToBottom.
-        scrollPane.verticalScrollBar.addAdjustmentListener { e ->
-            if (isProgrammaticScroll) return@addAdjustmentListener
-            val sb = scrollPane.verticalScrollBar
-            val atBottom = sb.value + sb.visibleAmount >= sb.maximum - 60
-            if (!atBottom) {
-                userScrolledAway = true
-            }
-        }
-        // Mouse wheel on the scrollPane itself (not viewport.view) so JTextPane children
-        // don't swallow the event before we see it.
-        scrollPane.addMouseWheelListener { e ->
-            if (e.wheelRotation < 0) {
-                userScrolledAway = true
-            }
-        }
 
         add(scrollPane, BorderLayout.CENTER)
         add(buildBottomPanel(), BorderLayout.SOUTH)
@@ -301,7 +281,7 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         if (text.isEmpty()) return
         ensureSession()
         inputArea.text = ""
-        userScrolledAway = false  // re-lock to bottom for the new response
+        scrollToBottomOnNextUpdate = true
         manager.sendMessage(text)
     }
 
@@ -358,13 +338,17 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         bubbleMap[message] = bubble
         messagesPanel.add(bubble)
         messagesPanel.revalidate()
-        smartScrollToBottom()
+        // Only scroll to bottom when user just sent a message
+        if (scrollToBottomOnNextUpdate) {
+            scrollToBottomOnNextUpdate = false
+            forceScrollToBottom()
+        }
     }
 
     override fun onMessageUpdated(session: ClaudeSession, message: ChatMessage) {
         if (session.id != manager.getActiveSession()?.id) return
         bubbleMap[message]?.update(message)
-        smartScrollToBottom()
+        // No auto-scrolling — user controls the scrollbar freely
     }
 
     override fun onSessionChanged(session: ClaudeSession?) {
@@ -388,33 +372,12 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         sendButton.isEnabled = !processing
         stopButton.isVisible = processing
         statusLabel.text = if (processing) "Claude is thinking..." else " "
-
-        isGenerating = processing
-        // Only reset userScrolledAway when generation STARTS (user just sent a message).
-        // Never reset it when generation ends — that would undo the user's scroll-up.
-    }
-
-    /**
-     * Auto-scroll to bottom unless the user has scrolled up.
-     * Re-checks userScrolledAway inside invokeLater to avoid race conditions.
-     */
-    private fun smartScrollToBottom() {
-        if (userScrolledAway) return
-        SwingUtilities.invokeLater {
-            if (userScrolledAway) return@invokeLater  // re-check after event queue delay
-            isProgrammaticScroll = true
-            val sb = scrollPane.verticalScrollBar
-            sb.value = sb.maximum
-            isProgrammaticScroll = false
-        }
     }
 
     private fun forceScrollToBottom() {
         SwingUtilities.invokeLater {
-            isProgrammaticScroll = true
             val sb = scrollPane.verticalScrollBar
             sb.value = sb.maximum
-            isProgrammaticScroll = false
         }
     }
 }
