@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.claudecode.webstorm"
-version = "1.2.2"
+version = "1.2.3"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
