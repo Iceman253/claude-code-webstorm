@@ -60,6 +60,7 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
 
     private val manager = ClaudeSessionManager.getInstance(project)
     private val messagesPanel = ScrollablePanel()
+    private val freezableViewport = FreezableViewport()
     private val scrollPane: JBScrollPane
     private val inputArea = JBTextArea(3, 0)
     private val sendButton = JButton("Send")
@@ -87,7 +88,12 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         messagesPanel.background = UIUtil.getEditorPaneBackground()
         messagesPanel.border = JBUI.Borders.empty(8)
 
-        scrollPane = JBScrollPane(messagesPanel).apply {
+        // MECHANISM 3 FIX: Use our FreezableViewport instead of JBScrollPane's default.
+        // This lets us freeze the viewport position during streaming so that
+        // ViewportLayout.layoutContainer() can't auto-scroll when the view grows.
+        freezableViewport.view = messagesPanel
+        scrollPane = JBScrollPane().apply {
+            setViewport(freezableViewport)
             border = JBUI.Borders.empty()
             horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
             verticalScrollBar.unitIncrement = 16
@@ -347,11 +353,17 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
 
     override fun onMessageUpdated(session: ClaudeSession, message: ChatMessage) {
         if (session.id != manager.getActiveSession()?.id) return
+        // MECHANISM 3: Freeze the viewport so layout can't change scroll position.
+        // We freeze here (not in onProcessingChanged) so that the initial
+        // forceScrollToBottom from doSend has already executed.
+        if (!freezableViewport.frozen && message.isStreaming) {
+            freezableViewport.freeze()
+        }
         bubbleMap[message]?.update(message)
-        // No auto-scrolling — user controls the scrollbar freely
     }
 
     override fun onSessionChanged(session: ClaudeSession?) {
+        freezableViewport.unfreeze()  // Allow scroll position changes when switching sessions
         bubbleMap.clear()
         messagesPanel.removeAll()
         if (session == null || session.messages.isEmpty()) {
@@ -372,12 +384,25 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         sendButton.isEnabled = !processing
         stopButton.isVisible = processing
         statusLabel.text = if (processing) "Claude is thinking..." else " "
+
+        // MECHANISM 3: Freeze viewport during generation so ViewportLayout
+        // can't auto-scroll. Unfreeze when done so user can scroll normally.
+        if (processing) {
+            // Don't freeze yet — we want the initial scroll-to-bottom from doSend to work.
+            // The freeze happens after the first onMessageUpdated (see below).
+        } else {
+            freezableViewport.unfreeze()
+        }
     }
 
     private fun forceScrollToBottom() {
         SwingUtilities.invokeLater {
+            // Temporarily unfreeze so we can actually set the position
+            val wasFrozen = freezableViewport.frozen
+            if (wasFrozen) freezableViewport.unfreeze()
             val sb = scrollPane.verticalScrollBar
             sb.value = sb.maximum
+            // Don't re-freeze here — freeze will happen on first onMessageUpdated
         }
     }
 }
@@ -392,7 +417,15 @@ class MessageBubble(
     private val timeFormat: SimpleDateFormat
 ) : JPanel() {
 
-    private val contentPane = JTextPane()
+    // MECHANISM 1 FIX: Override scrollRectToVisible on the JTextPane itself.
+    // When caret calls scrollRectToVisible(), it propagates up through every
+    // parent until it hits a JViewport. By overriding it to no-op on the
+    // JTextPane, the call never reaches the viewport.
+    private val contentPane = object : JTextPane() {
+        override fun scrollRectToVisible(aRect: Rectangle?) {
+            // No-op: block caret-triggered scroll from reaching the outer viewport
+        }
+    }
     private val metaLabel = JBLabel()
     private val costLabel = JBLabel()
     private val inner: RoundedPanel
@@ -468,8 +501,10 @@ class MessageBubble(
             border = JBUI.Borders.empty()
             putClientProperty(JTextPane.HONOR_DISPLAY_PROPERTIES, true)
             font = if (isUser) JBUI.Fonts.label(15f) else JBUI.Fonts.label(14f)
+            // MECHANISM 1 BELT: Also set caret policy as defense-in-depth
+            (caret as? javax.swing.text.DefaultCaret)?.updatePolicy =
+                javax.swing.text.DefaultCaret.NEVER_UPDATE
         }
-        disableCaretAutoScroll()
 
         inner.add(headerPanel, BorderLayout.NORTH)
         inner.add(contentPane, BorderLayout.CENTER)
@@ -485,50 +520,12 @@ class MessageBubble(
         renderFinal()
     }
 
-    // -----------------------------------------------------------------
-    // Scroll-position preservation
-    // -----------------------------------------------------------------
-
-    /**
-     * Walk up the component tree to find the enclosing JScrollPane's
-     * vertical scrollbar.  Hierarchy is:
-     *   MessageBubble → ScrollablePanel → JViewport → JScrollPane
-     */
-    private fun findScrollBar(): JScrollBar? {
-        val viewport = parent?.parent as? JViewport ?: return null
-        return (viewport.parent as? JScrollPane)?.verticalScrollBar
+    // MECHANISM 2 FIX: Override scrollRectToVisible on the MessageBubble itself.
+    // Any scrollRectToVisible call from any child (RoundedPanel, headerPanel, etc.)
+    // propagates through here. Block it.
+    override fun scrollRectToVisible(aRect: Rectangle?) {
+        // No-op: block all scroll propagation from children
     }
-
-    /**
-     * setContentType() replaces the EditorKit which can reset the caret.
-     * Call this after every setContentType() to re-apply NEVER_UPDATE.
-     */
-    private fun disableCaretAutoScroll() {
-        (contentPane.caret as? javax.swing.text.DefaultCaret)?.updatePolicy =
-            javax.swing.text.DefaultCaret.NEVER_UPDATE
-    }
-
-    /**
-     * Revalidate + repaint while keeping the scroll position frozen.
-     * Saves the current scrollbar value, runs revalidate(), then restores
-     * it after the pending layout pass completes.  Double-invokeLater
-     * guarantees we run AFTER Swing's RepaintManager validation pass.
-     */
-    private fun revalidatePreservingScroll() {
-        val sb = findScrollBar()
-        val saved = sb?.value
-        revalidate()
-        repaint()
-        if (sb != null && saved != null) {
-            SwingUtilities.invokeLater {
-                SwingUtilities.invokeLater {
-                    sb.value = saved
-                }
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------
 
     override fun getMaximumSize(): Dimension {
         val w = if (parent != null) parent.width else Short.MAX_VALUE.toInt()
@@ -543,6 +540,15 @@ class MessageBubble(
         return Dimension(parentW, pref.height)
     }
 
+    /**
+     * Re-apply NEVER_UPDATE on the caret. Must be called after every
+     * setContentType() because that replaces the EditorKit and can reset the caret.
+     */
+    private fun reapplyCaretPolicy() {
+        (contentPane.caret as? javax.swing.text.DefaultCaret)?.updatePolicy =
+            javax.swing.text.DefaultCaret.NEVER_UPDATE
+    }
+
     fun update(msg: ChatMessage) {
         this.message = msg
 
@@ -555,14 +561,11 @@ class MessageBubble(
         isCurrentlyStreaming = message.isStreaming
 
         if (message.isStreaming) {
-            // Content is still arriving — update target and keep typing
             targetContent = newContent
             if (revealTimer == null) {
-                // First update or timer stopped — start typing
                 startTyping()
             }
         } else {
-            // Streaming finished — stop timer and render final HTML
             revealTimer?.stop()
             revealTimer = null
             targetContent = newContent
@@ -577,7 +580,7 @@ class MessageBubble(
 
     private fun startTyping() {
         contentPane.contentType = "text/plain"
-        disableCaretAutoScroll()          // re-apply after contentType change
+        reapplyCaretPolicy()
         contentPane.font = JBUI.Fonts.label(14f)
         contentPane.text = CURSOR
         displayedLength = 0
@@ -593,7 +596,8 @@ class MessageBubble(
                 val now = System.currentTimeMillis()
                 if (now - lastRevalidateTime > REVALIDATE_INTERVAL) {
                     lastRevalidateTime = now
-                    revalidatePreservingScroll()   // ← preserves scroll
+                    revalidate()
+                    repaint()
                 }
             } else if (!isCurrentlyStreaming) {
                 revealTimer?.stop()
@@ -603,19 +607,15 @@ class MessageBubble(
         }.apply { start() }
     }
 
-    /**
-     * Render the final formatted version of the message.
-     * User messages: plain text. Assistant messages: markdown → HTML.
-     */
     private fun renderFinal() {
         if (message.role == "user") {
             contentPane.contentType = "text/plain"
-            disableCaretAutoScroll()      // re-apply after contentType change
+            reapplyCaretPolicy()
             contentPane.font = JBUI.Fonts.label(15f)
             contentPane.text = message.content
         } else {
             contentPane.contentType = "text/html"
-            disableCaretAutoScroll()      // re-apply after contentType change
+            reapplyCaretPolicy()
             val html = markdownToHtml(message.content)
             val fontFamily = JBUI.Fonts.label().family
             val fg = UIUtil.getLabelForeground()
@@ -629,7 +629,8 @@ class MessageBubble(
         message.costUsd?.let {
             costLabel.text = String.format("$%.4f", it)
         }
-        revalidatePreservingScroll()      // ← preserves scroll
+        revalidate()
+        repaint()
     }
 
     private fun markdownToHtml(md: String): String {
@@ -697,12 +698,48 @@ private class RoundedPanel(
 /**
  * A JPanel that implements Scrollable so that JTextPane word-wrap
  * works correctly inside a JScrollPane.
+ *
+ * MECHANISM 2 FIX: overrides scrollRectToVisible to block propagation
+ * from child components (MessageBubble, JTextPane, etc.) to the viewport.
  */
 private class ScrollablePanel : JPanel(), Scrollable {
+    override fun scrollRectToVisible(aRect: Rectangle?) {
+        // No-op: block all scroll propagation from children to viewport
+    }
     override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
     override fun getScrollableUnitIncrement(visibleRect: Rectangle, orientation: Int, direction: Int) = 16
     override fun getScrollableBlockIncrement(visibleRect: Rectangle, orientation: Int, direction: Int) =
         if (orientation == SwingConstants.VERTICAL) visibleRect.height else visibleRect.width
     override fun getScrollableTracksViewportWidth() = true
     override fun getScrollableTracksViewportHeight() = false
+}
+
+/**
+ * MECHANISM 3 FIX: A JViewport that can freeze its view position.
+ * When frozen, ViewportLayout.layoutContainer() cannot change the scroll position.
+ * This blocks the "bottom-justified" layout behavior in ViewportLayout that
+ * auto-scrolls when the view grows taller.
+ */
+private class FreezableViewport : JViewport() {
+    var frozen = false
+    private var savedPosition: Point? = null
+
+    fun freeze() {
+        savedPosition = viewPosition
+        frozen = true
+    }
+
+    fun unfreeze() {
+        frozen = false
+        savedPosition = null
+    }
+
+    override fun setViewPosition(p: Point) {
+        if (frozen) {
+            // During freeze, restore saved position instead of accepting layout's position
+            savedPosition?.let { super.setViewPosition(it) }
+        } else {
+            super.setViewPosition(p)
+        }
+    }
 }

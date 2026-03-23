@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.claudecode.webstorm"
-version = "1.1.6"
+version = "1.1.7"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -18,6 +18,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 
 repositories {
     mavenCentral()
+}
+
+dependencies {
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 
 intellij {
