@@ -468,6 +468,13 @@ class MessageBubble(
             border = JBUI.Borders.empty()
             putClientProperty(JTextPane.HONOR_DISPLAY_PROPERTIES, true)
             font = if (isUser) JBUI.Fonts.label(15f) else JBUI.Fonts.label(14f)
+            // CRITICAL: Disable the caret's auto-scroll policy.
+            // Without this, every text change scrolls the outer JScrollPane
+            // to keep the caret visible — which forces the user to the bottom.
+            caret.apply {
+                (this as? javax.swing.text.DefaultCaret)?.updatePolicy =
+                    javax.swing.text.DefaultCaret.NEVER_UPDATE
+            }
         }
 
         inner.add(headerPanel, BorderLayout.NORTH)
