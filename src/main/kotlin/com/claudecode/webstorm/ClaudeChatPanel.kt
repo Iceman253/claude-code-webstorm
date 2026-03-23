@@ -96,20 +96,17 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
 
         addWelcomeMessage()
 
-        // Detect when user manually scrolls away from bottom
+        // Detect when user scrolls up — release auto-scroll immediately
         scrollPane.verticalScrollBar.addAdjustmentListener { e ->
             if (!e.valueIsAdjusting) return@addAdjustmentListener
-            // User is dragging the scrollbar — check if they moved away from bottom
             val sb = scrollPane.verticalScrollBar
             val atBottom = sb.value + sb.visibleAmount >= sb.maximum - 60
-            if (!atBottom && isGenerating) {
+            if (!atBottom) {
                 userScrolledAway = true
             }
         }
-        // Also detect mouse wheel scrolling up
         scrollPane.viewport.view.addMouseWheelListener { e ->
-            if (e.wheelRotation < 0 && isGenerating) {
-                // Scrolling up during generation
+            if (e.wheelRotation < 0) {
                 userScrolledAway = true
             }
         }
@@ -300,6 +297,7 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
         if (text.isEmpty()) return
         ensureSession()
         inputArea.text = ""
+        userScrolledAway = false  // re-lock to bottom for the new response
         manager.sendMessage(text)
     }
 
@@ -399,12 +397,11 @@ class ClaudeChatPanel(private val project: Project) : JPanel(BorderLayout()), Ch
     }
 
     /**
-     * Auto-scroll to bottom ONLY while generating AND user hasn't scrolled away.
-     * Once generation finishes, scrolling is completely free.
+     * Auto-scroll to bottom unless the user has scrolled up.
+     * Scrolling up at any time releases the lock until the next message is sent.
      */
     private fun smartScrollToBottom() {
-        if (!isGenerating) return     // generation done — never force scroll
-        if (userScrolledAway) return  // user scrolled up — don't fight them
+        if (userScrolledAway) return
         SwingUtilities.invokeLater {
             val sb = scrollPane.verticalScrollBar
             sb.value = sb.maximum
