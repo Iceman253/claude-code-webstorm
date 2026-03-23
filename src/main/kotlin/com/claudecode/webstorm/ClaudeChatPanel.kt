@@ -468,14 +468,8 @@ class MessageBubble(
             border = JBUI.Borders.empty()
             putClientProperty(JTextPane.HONOR_DISPLAY_PROPERTIES, true)
             font = if (isUser) JBUI.Fonts.label(15f) else JBUI.Fonts.label(14f)
-            // CRITICAL: Disable the caret's auto-scroll policy.
-            // Without this, every text change scrolls the outer JScrollPane
-            // to keep the caret visible — which forces the user to the bottom.
-            caret.apply {
-                (this as? javax.swing.text.DefaultCaret)?.updatePolicy =
-                    javax.swing.text.DefaultCaret.NEVER_UPDATE
-            }
         }
+        disableCaretAutoScroll()
 
         inner.add(headerPanel, BorderLayout.NORTH)
         inner.add(contentPane, BorderLayout.CENTER)
@@ -490,6 +484,51 @@ class MessageBubble(
 
         renderFinal()
     }
+
+    // -----------------------------------------------------------------
+    // Scroll-position preservation
+    // -----------------------------------------------------------------
+
+    /**
+     * Walk up the component tree to find the enclosing JScrollPane's
+     * vertical scrollbar.  Hierarchy is:
+     *   MessageBubble → ScrollablePanel → JViewport → JScrollPane
+     */
+    private fun findScrollBar(): JScrollBar? {
+        val viewport = parent?.parent as? JViewport ?: return null
+        return (viewport.parent as? JScrollPane)?.verticalScrollBar
+    }
+
+    /**
+     * setContentType() replaces the EditorKit which can reset the caret.
+     * Call this after every setContentType() to re-apply NEVER_UPDATE.
+     */
+    private fun disableCaretAutoScroll() {
+        (contentPane.caret as? javax.swing.text.DefaultCaret)?.updatePolicy =
+            javax.swing.text.DefaultCaret.NEVER_UPDATE
+    }
+
+    /**
+     * Revalidate + repaint while keeping the scroll position frozen.
+     * Saves the current scrollbar value, runs revalidate(), then restores
+     * it after the pending layout pass completes.  Double-invokeLater
+     * guarantees we run AFTER Swing's RepaintManager validation pass.
+     */
+    private fun revalidatePreservingScroll() {
+        val sb = findScrollBar()
+        val saved = sb?.value
+        revalidate()
+        repaint()
+        if (sb != null && saved != null) {
+            SwingUtilities.invokeLater {
+                SwingUtilities.invokeLater {
+                    sb.value = saved
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
 
     override fun getMaximumSize(): Dimension {
         val w = if (parent != null) parent.width else Short.MAX_VALUE.toInt()
@@ -537,8 +576,8 @@ class MessageBubble(
     }
 
     private fun startTyping() {
-        // Use plain text during streaming for smooth character-by-character updates
         contentPane.contentType = "text/plain"
+        disableCaretAutoScroll()          // re-apply after contentType change
         contentPane.font = JBUI.Fonts.label(14f)
         contentPane.text = CURSOR
         displayedLength = 0
@@ -548,23 +587,19 @@ class MessageBubble(
                 val newEnd = (displayedLength + CHARS_PER_TICK).coerceAtMost(targetContent.length)
                 val chunk = targetContent.substring(displayedLength, newEnd)
                 val doc = contentPane.document
-                // Insert new characters just before the cursor (last char)
                 doc.insertString(doc.length - 1, chunk, null)
                 displayedLength = newEnd
 
-                // Throttle expensive layout passes
                 val now = System.currentTimeMillis()
                 if (now - lastRevalidateTime > REVALIDATE_INTERVAL) {
                     lastRevalidateTime = now
-                    revalidate()
+                    revalidatePreservingScroll()   // ← preserves scroll
                 }
             } else if (!isCurrentlyStreaming) {
-                // All caught up and streaming is done — switch to final HTML
                 revealTimer?.stop()
                 revealTimer = null
                 renderFinal()
             }
-            // else: caught up but still streaming — timer keeps running, waiting for more
         }.apply { start() }
     }
 
@@ -575,10 +610,12 @@ class MessageBubble(
     private fun renderFinal() {
         if (message.role == "user") {
             contentPane.contentType = "text/plain"
+            disableCaretAutoScroll()      // re-apply after contentType change
             contentPane.font = JBUI.Fonts.label(15f)
             contentPane.text = message.content
         } else {
             contentPane.contentType = "text/html"
+            disableCaretAutoScroll()      // re-apply after contentType change
             val html = markdownToHtml(message.content)
             val fontFamily = JBUI.Fonts.label().family
             val fg = UIUtil.getLabelForeground()
@@ -592,8 +629,7 @@ class MessageBubble(
         message.costUsd?.let {
             costLabel.text = String.format("$%.4f", it)
         }
-        revalidate()
-        repaint()
+        revalidatePreservingScroll()      // ← preserves scroll
     }
 
     private fun markdownToHtml(md: String): String {
