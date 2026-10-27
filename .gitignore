@@ -17,3 +17,5 @@ Thumbs.db
 # Secrets
 *.env
 credentials.json
+# Build output and IDE files
+.intellijPlatform/
